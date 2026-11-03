@@ -113,17 +113,24 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
     } else {
         int k = 0;
         for (; bp != buf.end() && !isspace(*bp); bp++) {
+            int flag;
             if (*bp == 'K')
-                k += 1;
+                flag = 1;
             else if (*bp == 'Q')
-                k += 2;
+                flag = 2;
             else if (*bp == 'k')
-                k += 4;
+                flag = 4;
             else if (*bp == 'q')
-                k += 8;
+                flag = 8;
             else {
                 return 0;
             }
+            // Reject repeated letters (e.g. "qq"): they would push k past 15
+            // and index past the end of vals.
+            if (k & flag) {
+                return 0;
+            }
+            k |= flag;
         }
         static const CastleType vals[4] = {CantCastleEitherSide, CanCastleKSide, CanCastleQSide,
                                            CanCastleEitherSide};
