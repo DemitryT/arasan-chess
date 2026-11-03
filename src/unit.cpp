@@ -1348,6 +1348,9 @@ static int testFENValidation()
         {"4k3/8/8/8/1pP5/8/8/4K3 b - c6", false},
         {"4k3/8/8/1Pp5/8/8/8/4K3 w - c8", false},
         {"4k3/8/8/8/1pP5/8/8/4K3 b - h1", false},
+        {"4k3/8/8/8/1pN5/8/8/4K3 b - c3", false},  // no pawn on c4
+        {"4k3/8/8/8/1pP5/2N5/8/4K3 b - c3", false}, // c3 occupied
+        {"4k3/8/8/8/1pP5/8/2N5/4K3 b - c3", false}, // c2 occupied
         // impossible positions
         {"8/P7/8/8/8/8/7K/p6k w - -", false},     // kings adjacent
         {"4k3/8/8/8/8/8/8/3KR3 b - -", true},     // side to move in check: fine

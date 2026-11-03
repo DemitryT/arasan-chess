@@ -160,6 +160,14 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
         }
         temp.state.enPassantSq = InvalidSquare;
         Square ep_candidate = SquareValue(sqbuf) - (8 * Direction[temp.sideToMove()]);
+        // The opponent's pawn must be on the square it just double-moved to,
+        // with the square it passed and the one it came from empty. Otherwise
+        // an e.p. capture would remove some other piece as if it were a pawn.
+        const Square ep_origin = epsq + (8 * Direction[temp.sideToMove()]);
+        if (temp.contents[ep_candidate] != MakePiece(Pawn, temp.oppositeSide()) ||
+            temp.contents[epsq] != EmptyPiece || temp.contents[ep_origin] != EmptyPiece) {
+            return 0;
+        }
         // only actually set the e.p. square on the board if an en-passant capture
         // is truly possible:
         if (Attacks::ep_mask[File(ep_candidate) - 1][(int)temp.oppositeSide()] &
