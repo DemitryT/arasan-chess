@@ -11,9 +11,12 @@
 #include "bitbase.cpp"
 
 #ifdef _MAC
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
 extern "C" {
 #include <libproc.h>
 };
+#endif
 #elif !defined(_MSC_VER)
 // assume POSIX system
 extern "C" {
@@ -102,6 +105,9 @@ static void getExecutablePath(std::string &path) {
     if (GetModuleFileName(NULL, szPath, MAX_PATH)) {
         path = std::string(szPath);
     }
+#elif defined(_MAC) && !TARGET_OS_OSX
+    // iOS and other Apple platforms have no proc_pidpath. Apps embedding
+    // the engine pass absolute paths, so no executable path is needed.
 #elif defined(_MAC)
     char pathbuf[PROC_PIDPATHINFO_MAXSIZE];
     pathbuf[0] = '\0';
