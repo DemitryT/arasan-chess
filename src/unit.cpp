@@ -186,7 +186,7 @@ static int testIsPinned() {
        IsPinnedData("NR2r2k/5bp1/3Q2p1/2p5/4P2P/1p6/2r1n1BK/8 b - -", E8, E7, 1),
        IsPinnedData("1R2r2k/5bp1/3Q2p1/2p5/4P2P/1p6/2r1n1BK/8 b - -", E8, G8, 0),
        IsPinnedData("NR2r2k/5bp1/3Q2p1/2p5/4P2P/1p6/2r1n1BK/8 b - -", E8, G8, 0),
-       IsPinnedData("k3r1RB/7R/3Q1np1/2p4n/4P2P/1p6/2r4K/8 b - -", E8, E6, 1),
+       IsPinnedData("k3r1RB/7R/3Q1np1/2p4n/4P2P/1pr5/7K/8 b - -", E8, E6, 1),
        IsPinnedData("k3r1BR/8/3Q1bp1/2p5/4P2P/1p6/2r1n2K/8 b - -", E8, E7, 0),
        IsPinnedData("8/2R3bk/1P6/4p2p/1rP5/5BP1/6P1/K3RN1q w - -", E1, E2, 0),
        IsPinnedData("8/2R3bk/1P6/4p2p/1rP5/4NBP1/6P1/K3R2q w - -", E1, E2, 1),
@@ -922,7 +922,7 @@ static int testCheckStatus() {
          }
    } cases[20] = {
        TestCase("5r1k/pp4pp/2p5/2b1P3/4P3/1PB1p3/P5PP/3N1QK1 b - -","e2+",InCheck),
-       TestCase("8/1n3ppk/7p/3n1P1P/kP4K1/1r6/2N5/3B4 w - -","Ne3",NotInCheck),
+       TestCase("8/1n3ppk/7p/3n1P1P/1P4K1/1r6/2N5/3B4 w - -","Ne3",NotInCheck),
        TestCase("8/5ppb/3k3p/1p3P1P/1PrN1PK1/3R4/8/8 w - -","Nf3+",InCheck),
        TestCase("8/5ppb/3k3p/1p1r1P1P/1P1N2K1/3R4/8/8 w - -","Nxb5+",InCheck),
        TestCase("8/5ppb/7p/5P1P/k2BR1K1/8/8/8 w - -","Bxg7+",InCheck),
@@ -1348,6 +1348,13 @@ static int testFENValidation()
         {"4k3/8/8/8/1pP5/8/8/4K3 b - c6", false},
         {"4k3/8/8/1Pp5/8/8/8/4K3 w - c8", false},
         {"4k3/8/8/8/1pP5/8/8/4K3 b - h1", false},
+        // impossible positions
+        {"8/P7/8/8/8/8/7K/p6k w - -", false},     // kings adjacent
+        {"4k3/8/8/8/8/8/8/3KR3 b - -", true},     // side to move in check: fine
+        {"4k3/8/8/8/8/8/8/3KR3 w - -", false},    // side not to move in check
+        {"4k3/8/8/8/8/8/8/K3K3 w - -", false},    // two white kings
+        {"P3k3/8/8/8/8/8/8/4K3 w - -", false},    // pawn on the 8th rank
+        {"4k3/8/8/8/8/8/8/p3K3 b - -", false},    // pawn on the 1st rank
     };
     for (const Case &c : cases) {
         Board board;

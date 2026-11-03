@@ -175,6 +175,24 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
     if (temp.kingPos[White] == InvalidSquare || temp.kingPos[Black] == InvalidSquare) {
         return 0;
     }
+    // Reject positions that can't occur in a game and that the move
+    // generator doesn't expect: more than one king per side, pawns on the
+    // first or last rank, or the side not to move in check (which lets the
+    // side to move "capture" the king, corrupting kingPos).
+    int kings[2] = {0, 0};
+    for (Square sq = 0; sq < 64; sq++) {
+        const Piece p = temp.contents[sq];
+        if (p == EmptyPiece) continue;
+        if (TypeOfPiece(p) == King) {
+            ++kings[PieceColor(p)];
+        } else if (TypeOfPiece(p) == Pawn && (sq < 8 || sq >= 56)) {
+            return 0;
+        }
+    }
+    if (kings[White] != 1 || kings[Black] != 1 ||
+        temp.anyAttacks(temp.kingSquare(temp.oppositeSide()), temp.sideToMove())) {
+        return 0;
+    }
     // Perform some sanity checking on castling status
     for (ColorType stm : colors) {
         if (temp.canCastleKSide(stm) && !temp.sanityCheckKSideCastling(stm)) {
