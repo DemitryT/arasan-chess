@@ -1324,6 +1324,107 @@ static int testRep()
     return errs;
 }
 
+// Malformed castling and en passant fields must be rejected, not
+// turned into out-of-range table indexes.
+static int testFENValidation()
+{
+    int errs = 0;
+    struct Case {
+        const char *fen;
+        bool valid;
+    };
+    static const Case cases[] = {
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KQkq -", true},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w qkQK -", true},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w qq -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KK -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KQkqq -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KQkqKQkq -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w Kx -", false},
+        {"4k3/8/8/1Pp5/8/8/8/4K3 w - c6", true},
+        {"4k3/8/8/8/1pP5/8/8/4K3 b - c3", true},
+        {"4k3/8/8/1P6/8/8/8/4K3 w - a1", false},
+        {"4k3/8/8/1Pp5/8/8/8/4K3 w - c3", false},
+        {"4k3/8/8/8/1pP5/8/8/4K3 b - c6", false},
+        {"4k3/8/8/1Pp5/8/8/8/4K3 w - c8", false},
+        {"4k3/8/8/8/1pP5/8/8/4K3 b - h1", false},
+    };
+    for (const Case &c : cases) {
+        Board board;
+        if ((BoardIO::readFEN(board, c.fen) != 0) != c.valid) {
+            std::cerr << "testFENValidation: expected " << (c.valid ? "valid" : "invalid")
+                      << ": " << c.fen << std::endl;
+            ++errs;
+        }
+    }
+    Board board;
+    if (BoardIO::readFEN(board, "r3k2r/8/8/8/8/8/8/R3K2R w Kq -")) {
+        if (board.castleStatus(White) != CanCastleKSide ||
+            board.castleStatus(Black) != CanCastleQSide) {
+            std::cerr << "testFENValidation: wrong castle status" << std::endl;
+            ++errs;
+        }
+    } else {
+        std::cerr << "testFENValidation: valid castling FEN rejected" << std::endl;
+        ++errs;
+    }
+    if (BoardIO::readFEN(board, "4k3/8/8/1Pp5/8/8/8/4K3 w - c6")) {
+        if (board.enPassantSq() != SquareValue("c5")) {
+            std::cerr << "testFENValidation: wrong e.p. square" << std::endl;
+            ++errs;
+        }
+    }
+    return errs;
+}
+
+// Games longer than the repetition list must not overflow it, and
+// repetition detection and undo must still work afterwards.
+static int testLongGame()
+{
+    int errs = 0;
+    Board board;
+    const std::array<std::string, 4> moves = {"g1f3", "g8f6", "f3g1", "f6g8"};
+    // 3000 plies: about three times the size of the repetition list
+    for (int ply = 0; ply < 3000; ply++) {
+        Move m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI,
+                                 moves[ply % 4]);
+        if (IsNull(m)) {
+            std::cerr << "testLongGame: error in move parsing at ply " << ply << std::endl;
+            return ++errs;
+        }
+        board.doMove(m);
+    }
+    // back at the start position, which has occurred many times
+    if (board.repCount(2) != 2 || !board.anyRep()) {
+        std::cerr << "testLongGame: repetition not detected" << std::endl;
+        ++errs;
+    }
+    // copies keep the (compacted) history
+    Board copy(board);
+    if (copy.repCount(2) != 2 || copy.hashCode() != board.hashCode()) {
+        std::cerr << "testLongGame: copy lost repetition history" << std::endl;
+        ++errs;
+    }
+    // a search-like sequence of make/unmake still restores the position
+    const hash_t before = board.hashCode();
+    std::vector<std::pair<Move, BoardState>> made;
+    for (int ply = 0; ply < Constants::MaxPly; ply++) {
+        Move m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI,
+                                 moves[ply % 4]);
+        made.emplace_back(m, board.state);
+        board.doMove(m);
+    }
+    while (!made.empty()) {
+        board.undoMove(made.back().first, made.back().second);
+        made.pop_back();
+    }
+    if (board.hashCode() != before || board.repCount(2) != 2) {
+        std::cerr << "testLongGame: undo after compaction failed" << std::endl;
+        ++errs;
+    }
+    return errs;
+}
+
 static int testMoveGen()
 {
     // Some basic tests for move generation, including routines used
@@ -1987,6 +2088,8 @@ static int doUnit() {
    errs += testEPD();
    errs += testHash();
    errs += testRep();
+   errs += testFENValidation();
+   errs += testLongGame();
    errs += testMoveGen();
    errs += testECO();
    int tmp = errs;
