@@ -95,8 +95,13 @@ void Board::setSecondaryVars()
          }
       }
    }
-   king_bits[White].set(kingPos[White]);
-   king_bits[Black].set(kingPos[Black]);
+   // kingPos is InvalidSquare if a FEN is missing a king (readFEN rejects
+   // that afterwards); don't shift by it.
+   for (ColorType c : colors) {
+      if (kingPos[c] != InvalidSquare) {
+         king_bits[c].set(kingPos[c]);
+      }
+   }
    state.hashCode = BoardHash::hashCode(*this);
    state.pawnHashCodeW = BoardHash::pawnHash(*this,White);
    state.pawnHashCodeB = BoardHash::pawnHash(*this,Black);
