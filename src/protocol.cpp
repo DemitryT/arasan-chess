@@ -2005,8 +2005,11 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
                 std::string move(*it);
                 Move m = Notation::value(board,board.sideToMove(),Notation::InputFormat::UCI,move);
                 if (!IsNull(m)) {
-                    // Arena can send invalid move sequences in some situations
-                    if (!validMove(board,m)) {
+                    // Arena can send invalid move sequences in some situations.
+                    // Use the full legality check: validMove() passes moves
+                    // that leave the king in check, after which the other side
+                    // could "capture" the king and corrupt the board.
+                    if (!legalMove(board,m)) {
                         std::cout << debugPrefix << "warning: invalid move received: " << move << ", ignoring" << std::endl;
                         break;
                     }

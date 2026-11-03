@@ -1387,6 +1387,30 @@ static int testFENValidation()
     return errs;
 }
 
+// The UCI "position ... moves" handler must reject a move that leaves the
+// mover's king in check (validMove alone lets it through).
+static int testIllegalUCIMove()
+{
+    int errs = 0;
+    Board board;
+    if (!BoardIO::readFEN(board, "Q7/8/8/8/8/8/7q/K6k b - -")) {
+        std::cerr << "testIllegalUCIMove: error in FEN" << std::endl;
+        return ++errs;
+    }
+    // Black is in check from the a8 queen; Qh3 doesn't address it
+    Move m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI, "h2h3");
+    if (!IsNull(m) && legalMove(board, m)) {
+        std::cerr << "testIllegalUCIMove: move into check accepted" << std::endl;
+        ++errs;
+    }
+    m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI, "h2g2");
+    if (IsNull(m) || !legalMove(board, m)) {
+        std::cerr << "testIllegalUCIMove: legal block rejected" << std::endl;
+        ++errs;
+    }
+    return errs;
+}
+
 // Games longer than the repetition list must not overflow it, and
 // repetition detection and undo must still work afterwards.
 static int testLongGame()
@@ -2100,6 +2124,7 @@ static int doUnit() {
    errs += testRep();
    errs += testFENValidation();
    errs += testLongGame();
+   errs += testIllegalUCIMove();
    errs += testMoveGen();
    errs += testECO();
    int tmp = errs;
