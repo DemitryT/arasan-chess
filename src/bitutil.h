@@ -44,8 +44,10 @@ static FORCEINLINE unsigned int _bitScanReverseAsm(const uint64_t bits)
 
 #endif
 
-#define GETBIT64(x) (uint64_t)(((int64_t)x)&-((int64_t)x))
-#define GETBIT32(x) (uint32_t)(((int32_t)x)&-((int32_t)x))
+// Isolate the lowest set bit. Unsigned negation is well defined (signed
+// negation of the top bit overflows), and compiles to the same code.
+#define GETBIT64(x) (uint64_t)(((uint64_t)(x)) & (0 - (uint64_t)(x)))
+#define GETBIT32(x) (uint32_t)(((uint32_t)(x)) & (0 - (uint32_t)(x)))
 
 class BitUtils
 {
