@@ -1358,6 +1358,10 @@ static int testFENValidation()
         {"4k3/8/8/8/8/8/8/K3K3 w - -", false},    // two white kings
         {"P3k3/8/8/8/8/8/8/4K3 w - -", false},    // pawn on the 8th rank
         {"4k3/8/8/8/8/8/8/p3K3 b - -", false},    // pawn on the 1st rank
+        {"4k3/pppppppp/p7/8/8/8/8/4K3 w - -", false},       // 9 pawns
+        {"4k3/8/8/8/8/8/8/QQQQKQQQ w - -", true},           // 7 queens, no pawns
+        {"4k3/8/8/8/8/8/PPPPPPPP/QQQQKQQQ w - -", false},   // queens and 8 pawns
+        {"QQQQ1QQQ/QQQQQQQQ/8/8/8/8/8/k3K3 b - -", false},  // 15 queens
     };
     for (const Case &c : cases) {
         Board board;

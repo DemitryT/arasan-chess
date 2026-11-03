@@ -186,19 +186,28 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
     // Reject positions that can't occur in a game and that the move
     // generator doesn't expect: more than one king per side, pawns on the
     // first or last rank, or the side not to move in check (which lets the
-    // side to move "capture" the king, corrupting kingPos).
-    int kings[2] = {0, 0};
+    // side to move "capture" the king, corrupting kingPos). Also more men
+    // than a game allows: Material keeps each piece count in 4 bits, so e.g.
+    // 16 pawns overflow into the knight count.
+    int counts[2][8] = {{0}, {0}};
     for (Square sq = 0; sq < 64; sq++) {
         const Piece p = temp.contents[sq];
         if (p == EmptyPiece) continue;
-        if (TypeOfPiece(p) == King) {
-            ++kings[PieceColor(p)];
-        } else if (TypeOfPiece(p) == Pawn && (sq < 8 || sq >= 56)) {
+        ++counts[PieceColor(p)][TypeOfPiece(p)];
+        if (TypeOfPiece(p) == Pawn && (sq < 8 || sq >= 56)) {
             return 0;
         }
     }
-    if (kings[White] != 1 || kings[Black] != 1 ||
-        temp.anyAttacks(temp.kingSquare(temp.oppositeSide()), temp.sideToMove())) {
+    for (ColorType side : colors) {
+        const int *n = counts[side];
+        // pieces beyond the starting set must have come from promotions
+        const int promoted = std::max(0, n[Queen] - 1) + std::max(0, n[Rook] - 2) +
+                             std::max(0, n[Bishop] - 2) + std::max(0, n[Knight] - 2);
+        if (n[King] != 1 || n[Pawn] > 8 || promoted > 8 - n[Pawn]) {
+            return 0;
+        }
+    }
+    if (temp.anyAttacks(temp.kingSquare(temp.oppositeSide()), temp.sideToMove())) {
         return 0;
     }
     // Perform some sanity checking on castling status
