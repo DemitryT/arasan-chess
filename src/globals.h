@@ -78,8 +78,9 @@ extern bool initOptions(bool autoLoadRC = true, const char *rcPath = nullptr, bo
 
 // Perform actions that need to be done before a game but after
 // program startup (chiefly ones that depend on runtime options
-// being set).
-extern void delayedInit(bool verbose = true);
+// being set). Returns false if the NNUE network could not be loaded
+// (only in the ARASAN_EMBEDDED build: otherwise that is fatal).
+extern bool delayedInit(bool verbose = true);
 
 // Attempt to unload the tablebases (if in use),
 extern void unloadTb();

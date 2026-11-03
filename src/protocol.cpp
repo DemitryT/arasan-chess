@@ -125,6 +125,31 @@ static void split_cmd(const std::string &cmd, std::string &cmd_word, std::string
    }
 }
 
+#ifdef ARASAN_EMBEDDED
+// The embedded build never opens a file path that arrives through the
+// protocol. These options set a path, or turn on a feature that opens one
+// (book, game file, learning file, tablebases). Compared ignoring case.
+static bool isEmbeddedBlockedOption(const std::string &name) {
+    static const char *const blocked[] = {"BookPath",          "OwnBook",       "Game pathname",
+                                          "Store games",       "Learning file", "Position learning",
+                                          "NNUE file",         "SyzygyPath",    "Use tablebases"};
+    for (const char *b : blocked) {
+        const std::string s(b);
+        if (s.size() == name.size() &&
+            std::equal(s.begin(), s.end(), name.begin(),
+                       [](char x, char y) { return tolower(x) == tolower(y); })) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Commands that read or write files named in their arguments.
+static bool isEmbeddedBlockedCommand(const std::string &cmd_word) {
+    return cmd_word == "test" || cmd_word == "loadgame" || cmd_word == "egtpath";
+}
+#endif
+
 Protocol::Protocol(const Board &board, bool traceOn, bool icsMode, bool cpus_set, bool memory_set)
     : verbose(false), post(false), searcher(nullptr), last_move(NullMove),
       last_move_image("(null)"), last_computer_move(NullMove), time_left(0), opp_time(0),
@@ -1536,6 +1561,12 @@ void Protocol::processWinboardOptions(const std::string &args) {
     if (doTrace) {
         std::cout << debugPrefix << "setting option " << name << "=" << value << std::endl;
     }
+#ifdef ARASAN_EMBEDDED
+    if (isEmbeddedBlockedOption(name)) {
+        std::cout << debugPrefix << "error: option \"" << name << "\" is disabled in this build"
+                  << std::endl;
+    } else
+#endif
     if (name == "SyzygyUse50MoveRule") {
         Options::setOption<bool>(value,globals::options.search.syzygy_50_move_rule);
     }
@@ -1670,6 +1701,20 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
     }
     std::string cmd_word, cmd_args;
     split_cmd(cmd, cmd_word, cmd_args);
+#ifdef ARASAN_EMBEDDED
+    if (isEmbeddedBlockedCommand(cmd_word)) {
+        std::cout << debugPrefix << "error: \"" << cmd_word << "\" is disabled in this build"
+                  << std::endl;
+        return true; // false would mean "quit"
+    }
+    if (!globals::nnueInitDone && (cmd_word == "go" || cmd_word == "bench")) {
+        // delayedInit failed to load the network: don't search without it
+        if (!globals::delayedInit()) {
+            std::cout << debugPrefix << "error: no NNUE network loaded" << std::endl;
+            return true;
+        }
+    }
+#endif
     if (cmd == "uci") {
         uci = true;
         globals::debugPrefix = UCI_DEBUG_PREFIX;
@@ -1747,6 +1792,12 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
                value = value.erase(value.find_last_not_of(' ') + 1);
             }
         }
+#ifdef ARASAN_EMBEDDED
+        if (isEmbeddedBlockedOption(name)) {
+            std::cout << debugPrefix << "error: option \"" << name << "\" is disabled in this build"
+                      << std::endl;
+        } else
+#endif
         if (uciOptionCompare(name,"Hash")) {
             if (!memorySet) {
                 size_t old = globals::options.search.hash_table_size;
