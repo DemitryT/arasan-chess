@@ -20,6 +20,7 @@ Each change is its own commit, so upstream merges stay easy.
 | setSecondaryVars: skip a missing king | No shift by `InvalidSquare` (127). | Undefined behavior flagged by UBSan for FENs missing a king. |
 | Add ARASAN_EMBEDDED build flag | See below. | Safe defaults for running inside an app. |
 | readFEN: reject positions that can't occur in a game | Reject: the side not to move in check (incl. adjacent kings), more than one king per side, pawns on the 1st/8th rank. | Found by fuzzing: the engine could "capture" a king; in release builds `kingPos` became 127 and was used as an index. |
+| readFEN: reject more men than a game allows | At most 8 pawns per side, and extra pieces only as many as missing pawns. | Found by fuzzing: `Material` stores each count in 4 bits, so 16 pawns overflowed into the knight count. |
 | readFEN: require a real pawn behind the en passant square | The e.p. square needs the opponent's pawn on the double-move square, with the passed and origin squares empty. | Found by fuzzing: e.p. captured a knight as if it were a pawn, corrupting the bitboards. |
 | Build without SYZYGY_TBS, and for iOS | Guard syzygy-only option code; no `libproc.h` outside macOS. | Building without tablebases didn't compile; `proc_pidpath` doesn't exist on iOS. |
 | UCI position: reject moves that leave the king in check | `legalMove()` instead of `validMove()` in the `position` handler. | Found by fuzzing: same king-capture corruption, through a move list. |
