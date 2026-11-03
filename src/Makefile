@@ -45,6 +45,10 @@ endif
 ifdef TUNE
 FLAGS := $(FLAGS) -DTUNE
 endif
+# set EMBEDDED=1 to build for use inside another app (see docs/ROOKY.md)
+ifdef EMBEDDED
+FLAGS := $(FLAGS) -DARASAN_EMBEDDED
+endif
 NNUE_FLAGS := -Innue -DNETWORK=$(NETWORK)
 
 #PROF     = -pg

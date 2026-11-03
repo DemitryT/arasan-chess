@@ -95,8 +95,13 @@ void Board::setSecondaryVars()
          }
       }
    }
-   king_bits[White].set(kingPos[White]);
-   king_bits[Black].set(kingPos[Black]);
+   // kingPos is InvalidSquare if a FEN is missing a king (readFEN rejects
+   // that afterwards); don't shift by it.
+   for (ColorType c : colors) {
+      if (kingPos[c] != InvalidSquare) {
+         king_bits[c].set(kingPos[c]);
+      }
+   }
    state.hashCode = BoardHash::hashCode(*this);
    state.pawnHashCodeW = BoardHash::pawnHash(*this,White);
    state.pawnHashCodeB = BoardHash::pawnHash(*this,Black);
@@ -160,7 +165,7 @@ Board::Board(const Board &b) {
     std::memcpy(&contents, &b.contents, (uint8_t *)repList - (uint8_t *)&contents);
     // Copy the repetition table
     int rep_entries = (int)(b.repListHead - b.repList);
-    assert(rep_entries >= 0 && rep_entries < RepListSize);
+    assert(rep_entries >= 0 && rep_entries <= RepListSize);
     if (rep_entries) {
         std::memcpy(repList, b.repList, sizeof(hash_t) * rep_entries);
     }
@@ -232,7 +237,7 @@ void Board::doNull(NodeInfo *node)
    }
    side = oppositeSide();
    state.hashCode = BoardHash::setSideToMove(state.hashCode,side);
-   *repListHead++ = state.hashCode;
+   pushRep(state.hashCode);
    if (node) {
       (node+1)->dirty_num = 0;
       (node+1)->accum.setEmpty();
@@ -857,7 +862,7 @@ void Board::doMove( Move move, [[maybe_unused]] NodeInfo *node )
 
    // changing side to move so flip those bits
    state.hashCode = BoardHash::setSideToMove(state.hashCode,oppositeSide());
-   *repListHead++ = state.hashCode;
+   pushRep(state.hashCode);
    //assert(pawn_hash(White) == BoardHash::pawnHash(*this),White);
    side = oppositeSide();
    allOccupied = occupied[White] | occupied[Black];
@@ -1994,9 +1999,23 @@ static void set_bad( std::istream &i )
     i.clear( std::ios::badbit | i.rdstate() );
 }
 
+void Board::compactRepList() noexcept
+{
+   // Keep the newest half. That is far more than the 100 plies the 50-move
+   // rule allows, plus MaxPly for an ongoing search, so undoMove/undoNull
+   // can never step back past the start of the list.
+   static_assert(RepListSize / 2 > 100 + Constants::MaxPly * 2,
+                 "repList too small to compact safely");
+   const int keep = RepListSize / 2;
+   std::memmove(repList, repListHead - keep, sizeof(hash_t) * keep);
+   repListHead = repList + keep;
+}
+
 int Board::repCount(int target) const noexcept
 {
-    int entries = std::min<int>(state.movesFromNull,state.moveCount) - 2;
+    // Never look back past the start of repList (it may have been compacted).
+    const int stored = (int)(repListHead - repList) - 1;
+    int entries = std::min<int>(std::min<int>(state.movesFromNull,state.moveCount), stored) - 2;
     if (entries <= 0) return 0;
     hash_t to_match = hashCode();
     int count = 0;
@@ -2018,7 +2037,8 @@ int Board::repCount(int target) const noexcept
 
 bool Board::anyRep() const noexcept
 {
-   int entries = state.moveCount;
+   // Never look back past the start of repList (it may have been compacted).
+   int entries = std::min<int>(state.moveCount, (int)(repListHead - repList));
    // If only 2 entries side to move is different so the
    // hash codes cannot match:
    if (entries < 3) return 0;

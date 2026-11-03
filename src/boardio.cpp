@@ -113,17 +113,24 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
     } else {
         int k = 0;
         for (; bp != buf.end() && !isspace(*bp); bp++) {
+            int flag;
             if (*bp == 'K')
-                k += 1;
+                flag = 1;
             else if (*bp == 'Q')
-                k += 2;
+                flag = 2;
             else if (*bp == 'k')
-                k += 4;
+                flag = 4;
             else if (*bp == 'q')
-                k += 8;
+                flag = 8;
             else {
                 return 0;
             }
+            // Reject repeated letters (e.g. "qq"): they would push k past 15
+            // and index past the end of vals.
+            if (k & flag) {
+                return 0;
+            }
+            k |= flag;
         }
         static const CastleType vals[4] = {CantCastleEitherSide, CanCastleKSide, CanCastleQSide,
                                            CanCastleEitherSide};
@@ -145,11 +152,22 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
             return 0;
         sqbuf[1] = *bp++;
         Square epsq = SquareValue(sqbuf);
-        if (epsq == InvalidSquare) {
+        // The e.p. square must be on the 6th rank from the side to move's
+        // perspective (rank 6 if White moves, rank 3 if Black moves).
+        // Otherwise ep_candidate below can fall off the board.
+        if (epsq == InvalidSquare || Rank(epsq, temp.sideToMove()) != 6) {
             return 0;
         }
         temp.state.enPassantSq = InvalidSquare;
         Square ep_candidate = SquareValue(sqbuf) - (8 * Direction[temp.sideToMove()]);
+        // The opponent's pawn must be on the square it just double-moved to,
+        // with the square it passed and the one it came from empty. Otherwise
+        // an e.p. capture would remove some other piece as if it were a pawn.
+        const Square ep_origin = epsq + (8 * Direction[temp.sideToMove()]);
+        if (temp.contents[ep_candidate] != MakePiece(Pawn, temp.oppositeSide()) ||
+            temp.contents[epsq] != EmptyPiece || temp.contents[ep_origin] != EmptyPiece) {
+            return 0;
+        }
         // only actually set the e.p. square on the board if an en-passant capture
         // is truly possible:
         if (Attacks::ep_mask[File(ep_candidate) - 1][(int)temp.oppositeSide()] &
@@ -163,6 +181,33 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
     }
     temp.repList[temp.state.moveCount++] = temp.hashCode();
     if (temp.kingPos[White] == InvalidSquare || temp.kingPos[Black] == InvalidSquare) {
+        return 0;
+    }
+    // Reject positions that can't occur in a game and that the move
+    // generator doesn't expect: more than one king per side, pawns on the
+    // first or last rank, or the side not to move in check (which lets the
+    // side to move "capture" the king, corrupting kingPos). Also more men
+    // than a game allows: Material keeps each piece count in 4 bits, so e.g.
+    // 16 pawns overflow into the knight count.
+    int counts[2][8] = {{0}, {0}};
+    for (Square sq = 0; sq < 64; sq++) {
+        const Piece p = temp.contents[sq];
+        if (p == EmptyPiece) continue;
+        ++counts[PieceColor(p)][TypeOfPiece(p)];
+        if (TypeOfPiece(p) == Pawn && (sq < 8 || sq >= 56)) {
+            return 0;
+        }
+    }
+    for (ColorType side : colors) {
+        const int *n = counts[side];
+        // pieces beyond the starting set must have come from promotions
+        const int promoted = std::max(0, n[Queen] - 1) + std::max(0, n[Rook] - 2) +
+                             std::max(0, n[Bishop] - 2) + std::max(0, n[Knight] - 2);
+        if (n[King] != 1 || n[Pawn] > 8 || promoted > 8 - n[Pawn]) {
+            return 0;
+        }
+    }
+    if (temp.anyAttacks(temp.kingSquare(temp.oppositeSide()), temp.sideToMove())) {
         return 0;
     }
     // Perform some sanity checking on castling status

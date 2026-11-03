@@ -186,7 +186,7 @@ static int testIsPinned() {
        IsPinnedData("NR2r2k/5bp1/3Q2p1/2p5/4P2P/1p6/2r1n1BK/8 b - -", E8, E7, 1),
        IsPinnedData("1R2r2k/5bp1/3Q2p1/2p5/4P2P/1p6/2r1n1BK/8 b - -", E8, G8, 0),
        IsPinnedData("NR2r2k/5bp1/3Q2p1/2p5/4P2P/1p6/2r1n1BK/8 b - -", E8, G8, 0),
-       IsPinnedData("k3r1RB/7R/3Q1np1/2p4n/4P2P/1p6/2r4K/8 b - -", E8, E6, 1),
+       IsPinnedData("k3r1RB/7R/3Q1np1/2p4n/4P2P/1pr5/7K/8 b - -", E8, E6, 1),
        IsPinnedData("k3r1BR/8/3Q1bp1/2p5/4P2P/1p6/2r1n2K/8 b - -", E8, E7, 0),
        IsPinnedData("8/2R3bk/1P6/4p2p/1rP5/5BP1/6P1/K3RN1q w - -", E1, E2, 0),
        IsPinnedData("8/2R3bk/1P6/4p2p/1rP5/4NBP1/6P1/K3R2q w - -", E1, E2, 1),
@@ -922,7 +922,7 @@ static int testCheckStatus() {
          }
    } cases[20] = {
        TestCase("5r1k/pp4pp/2p5/2b1P3/4P3/1PB1p3/P5PP/3N1QK1 b - -","e2+",InCheck),
-       TestCase("8/1n3ppk/7p/3n1P1P/kP4K1/1r6/2N5/3B4 w - -","Ne3",NotInCheck),
+       TestCase("8/1n3ppk/7p/3n1P1P/1P4K1/1r6/2N5/3B4 w - -","Ne3",NotInCheck),
        TestCase("8/5ppb/3k3p/1p3P1P/1PrN1PK1/3R4/8/8 w - -","Nf3+",InCheck),
        TestCase("8/5ppb/3k3p/1p1r1P1P/1P1N2K1/3R4/8/8 w - -","Nxb5+",InCheck),
        TestCase("8/5ppb/7p/5P1P/k2BR1K1/8/8/8 w - -","Bxg7+",InCheck),
@@ -1320,6 +1320,145 @@ static int testRep()
             std::cerr << "testRep: error in isLegalDraw" << std::endl;
             ++errs;
         }
+    }
+    return errs;
+}
+
+// Malformed castling and en passant fields must be rejected, not
+// turned into out-of-range table indexes.
+static int testFENValidation()
+{
+    int errs = 0;
+    struct Case {
+        const char *fen;
+        bool valid;
+    };
+    static const Case cases[] = {
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KQkq -", true},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w qkQK -", true},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w qq -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KK -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KQkqq -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w KQkqKQkq -", false},
+        {"r3k2r/8/8/8/8/8/8/R3K2R w Kx -", false},
+        {"4k3/8/8/1Pp5/8/8/8/4K3 w - c6", true},
+        {"4k3/8/8/8/1pP5/8/8/4K3 b - c3", true},
+        {"4k3/8/8/1P6/8/8/8/4K3 w - a1", false},
+        {"4k3/8/8/1Pp5/8/8/8/4K3 w - c3", false},
+        {"4k3/8/8/8/1pP5/8/8/4K3 b - c6", false},
+        {"4k3/8/8/1Pp5/8/8/8/4K3 w - c8", false},
+        {"4k3/8/8/8/1pP5/8/8/4K3 b - h1", false},
+        {"4k3/8/8/8/1pN5/8/8/4K3 b - c3", false},  // no pawn on c4
+        {"4k3/8/8/8/1pP5/2N5/8/4K3 b - c3", false}, // c3 occupied
+        {"4k3/8/8/8/1pP5/8/2N5/4K3 b - c3", false}, // c2 occupied
+        // impossible positions
+        {"8/P7/8/8/8/8/7K/p6k w - -", false},     // kings adjacent
+        {"4k3/8/8/8/8/8/8/3KR3 b - -", true},     // side to move in check: fine
+        {"4k3/8/8/8/8/8/8/3KR3 w - -", false},    // side not to move in check
+        {"4k3/8/8/8/8/8/8/K3K3 w - -", false},    // two white kings
+        {"P3k3/8/8/8/8/8/8/4K3 w - -", false},    // pawn on the 8th rank
+        {"4k3/8/8/8/8/8/8/p3K3 b - -", false},    // pawn on the 1st rank
+        {"4k3/pppppppp/p7/8/8/8/8/4K3 w - -", false},       // 9 pawns
+        {"4k3/8/8/8/8/8/8/QQQQKQQQ w - -", true},           // 7 queens, no pawns
+        {"4k3/8/8/8/8/8/PPPPPPPP/QQQQKQQQ w - -", false},   // queens and 8 pawns
+        {"QQQQ1QQQ/QQQQQQQQ/8/8/8/8/8/k3K3 b - -", false},  // 15 queens
+    };
+    for (const Case &c : cases) {
+        Board board;
+        if ((BoardIO::readFEN(board, c.fen) != 0) != c.valid) {
+            std::cerr << "testFENValidation: expected " << (c.valid ? "valid" : "invalid")
+                      << ": " << c.fen << std::endl;
+            ++errs;
+        }
+    }
+    Board board;
+    if (BoardIO::readFEN(board, "r3k2r/8/8/8/8/8/8/R3K2R w Kq -")) {
+        if (board.castleStatus(White) != CanCastleKSide ||
+            board.castleStatus(Black) != CanCastleQSide) {
+            std::cerr << "testFENValidation: wrong castle status" << std::endl;
+            ++errs;
+        }
+    } else {
+        std::cerr << "testFENValidation: valid castling FEN rejected" << std::endl;
+        ++errs;
+    }
+    if (BoardIO::readFEN(board, "4k3/8/8/1Pp5/8/8/8/4K3 w - c6")) {
+        if (board.enPassantSq() != SquareValue("c5")) {
+            std::cerr << "testFENValidation: wrong e.p. square" << std::endl;
+            ++errs;
+        }
+    }
+    return errs;
+}
+
+// The UCI "position ... moves" handler must reject a move that leaves the
+// mover's king in check (validMove alone lets it through).
+static int testIllegalUCIMove()
+{
+    int errs = 0;
+    Board board;
+    if (!BoardIO::readFEN(board, "Q7/8/8/8/8/8/7q/K6k b - -")) {
+        std::cerr << "testIllegalUCIMove: error in FEN" << std::endl;
+        return ++errs;
+    }
+    // Black is in check from the a8 queen; Qh3 doesn't address it
+    Move m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI, "h2h3");
+    if (!IsNull(m) && legalMove(board, m)) {
+        std::cerr << "testIllegalUCIMove: move into check accepted" << std::endl;
+        ++errs;
+    }
+    m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI, "h2g2");
+    if (IsNull(m) || !legalMove(board, m)) {
+        std::cerr << "testIllegalUCIMove: legal block rejected" << std::endl;
+        ++errs;
+    }
+    return errs;
+}
+
+// Games longer than the repetition list must not overflow it, and
+// repetition detection and undo must still work afterwards.
+static int testLongGame()
+{
+    int errs = 0;
+    Board board;
+    const std::array<std::string, 4> moves = {"g1f3", "g8f6", "f3g1", "f6g8"};
+    // 3000 plies: about three times the size of the repetition list
+    for (int ply = 0; ply < 3000; ply++) {
+        Move m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI,
+                                 moves[ply % 4]);
+        if (IsNull(m)) {
+            std::cerr << "testLongGame: error in move parsing at ply " << ply << std::endl;
+            return ++errs;
+        }
+        board.doMove(m);
+    }
+    // back at the start position, which has occurred many times
+    if (board.repCount(2) != 2 || !board.anyRep()) {
+        std::cerr << "testLongGame: repetition not detected" << std::endl;
+        ++errs;
+    }
+    // copies keep the (compacted) history
+    Board copy(board);
+    if (copy.repCount(2) != 2 || copy.hashCode() != board.hashCode()) {
+        std::cerr << "testLongGame: copy lost repetition history" << std::endl;
+        ++errs;
+    }
+    // a search-like sequence of make/unmake still restores the position
+    const hash_t before = board.hashCode();
+    std::vector<std::pair<Move, BoardState>> made;
+    for (int ply = 0; ply < Constants::MaxPly; ply++) {
+        Move m = Notation::value(board, board.sideToMove(), Notation::InputFormat::UCI,
+                                 moves[ply % 4]);
+        made.emplace_back(m, board.state);
+        board.doMove(m);
+    }
+    while (!made.empty()) {
+        board.undoMove(made.back().first, made.back().second);
+        made.pop_back();
+    }
+    if (board.hashCode() != before || board.repCount(2) != 2) {
+        std::cerr << "testLongGame: undo after compaction failed" << std::endl;
+        ++errs;
     }
     return errs;
 }
@@ -1987,6 +2126,9 @@ static int doUnit() {
    errs += testEPD();
    errs += testHash();
    errs += testRep();
+   errs += testFENValidation();
+   errs += testLongGame();
+   errs += testIllegalUCIMove();
    errs += testMoveGen();
    errs += testECO();
    int tmp = errs;

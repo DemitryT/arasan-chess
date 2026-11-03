@@ -11,9 +11,12 @@
 #include "bitbase.cpp"
 
 #ifdef _MAC
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
 extern "C" {
 #include <libproc.h>
 };
+#endif
 #elif !defined(_MSC_VER)
 // assume POSIX system
 extern "C" {
@@ -102,6 +105,9 @@ static void getExecutablePath(std::string &path) {
     if (GetModuleFileName(NULL, szPath, MAX_PATH)) {
         path = std::string(szPath);
     }
+#elif defined(_MAC) && !TARGET_OS_OSX
+    // iOS and other Apple platforms have no proc_pidpath. Apps embedding
+    // the engine pass absolute paths, so no executable path is needed.
 #elif defined(_MAC)
     char pathbuf[PROC_PIDPATHINFO_MAXSIZE];
     pathbuf[0] = '\0';
@@ -143,7 +149,10 @@ std::string globals::appendPath(const std::string &base, const std::string &file
 }
 
 bool globals::initGlobals() {
-#ifndef _WIN32
+    // The embedded build runs inside a host app's process: leave its
+    // resource limits alone. The host runs searches on a thread it
+    // created with a large enough stack (see LINUX_STACK_SIZE).
+#if !defined(_WIN32) && !defined(ARASAN_EMBEDDED)
     struct rlimit rl;
     const rlim_t STACK_MAX = static_cast<rlim_t>(LINUX_STACK_SIZE);
     auto result = getrlimit(RLIMIT_STACK, &rl);
@@ -156,7 +165,8 @@ bool globals::initGlobals() {
             if (result)
             {
                 std::cerr << "failed to increase stack size" << std::endl;
-                exit(-1);
+                return false; // callers exit on failure
+
             }
         }
     }
@@ -197,6 +207,24 @@ void CDECL globals::cleanupGlobals(void) {
 
 bool globals::initOptions(bool autoLoadRC, const char *rcPath,
                           bool memorySet, bool cpusSet) {
+#ifdef ARASAN_EMBEDDED
+    // No arasan.rc and no home directory lookups: the host app sets
+    // everything it needs (including the NNUE path) explicitly. Turn off
+    // every feature that reads or writes files on its own.
+    (void)autoLoadRC;
+    (void)rcPath;
+    (void)memorySet;
+    (void)cpusSet;
+    options.games.store_games = false;
+    options.search.ponder = false;
+    options.learning.position_learning = false;
+    options.book.book_enabled = false;
+    options.book.eco_enabled = false;
+#ifdef SYZYGY_TBS
+    options.search.use_tablebases = false;
+#endif
+    return true;
+#endif
     if (autoLoadRC) {
         const std::string stdRcPath(derivePath(RC_FILE_NAME));
         // try to read arasan.rc file
@@ -276,7 +304,7 @@ void globals::initGameFile() {
     }
 }
 
-void globals::delayedInit(bool verbose) {
+bool globals::delayedInit(bool verbose) {
 #ifdef SYZYGY_TBS
     if (options.search.use_tablebases && !globals::tb_init_done()) {
         EGTBMenCount = 0;
@@ -311,9 +339,15 @@ void globals::delayedInit(bool verbose) {
                       << std::endl;
         }
         if (!nnueInitDone) {
+#ifdef ARASAN_EMBEDDED
+            // Let the host app report it: never terminate its process.
+            std::cerr << "failed to load network." << std::endl;
+            return false;
+#else
             // This is now a fatal error
             std::cerr << "failed to load network, terminating." << std::endl;
             exit(-1);
+#endif
         }
     }
     // also initialize the book here
@@ -336,6 +370,7 @@ void globals::delayedInit(bool verbose) {
                 std::cout << debugPrefix << "warning: failed to load ECO database from " << path << std::endl;
         }
     }
+    return true;
 }
 
 void globals::unloadTb() {

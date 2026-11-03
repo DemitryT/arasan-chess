@@ -125,6 +125,31 @@ static void split_cmd(const std::string &cmd, std::string &cmd_word, std::string
    }
 }
 
+#ifdef ARASAN_EMBEDDED
+// The embedded build never opens a file path that arrives through the
+// protocol. These options set a path, or turn on a feature that opens one
+// (book, game file, learning file, tablebases). Compared ignoring case.
+static bool isEmbeddedBlockedOption(const std::string &name) {
+    static const char *const blocked[] = {"BookPath",          "OwnBook",       "Game pathname",
+                                          "Store games",       "Learning file", "Position learning",
+                                          "NNUE file",         "SyzygyPath",    "Use tablebases"};
+    for (const char *b : blocked) {
+        const std::string s(b);
+        if (s.size() == name.size() &&
+            std::equal(s.begin(), s.end(), name.begin(),
+                       [](char x, char y) { return tolower(x) == tolower(y); })) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Commands that read or write files named in their arguments.
+static bool isEmbeddedBlockedCommand(const std::string &cmd_word) {
+    return cmd_word == "test" || cmd_word == "loadgame" || cmd_word == "egtpath";
+}
+#endif
+
 Protocol::Protocol(const Board &board, bool traceOn, bool icsMode, bool cpus_set, bool memory_set)
     : verbose(false), post(false), searcher(nullptr), last_move(NullMove),
       last_move_image("(null)"), last_computer_move(NullMove), time_left(0), opp_time(0),
@@ -1536,13 +1561,22 @@ void Protocol::processWinboardOptions(const std::string &args) {
     if (doTrace) {
         std::cout << debugPrefix << "setting option " << name << "=" << value << std::endl;
     }
+#ifdef ARASAN_EMBEDDED
+    if (isEmbeddedBlockedOption(name)) {
+        std::cout << debugPrefix << "error: option \"" << name << "\" is disabled in this build"
+                  << std::endl;
+    } else
+#endif
+#ifdef SYZYGY_TBS
     if (name == "SyzygyUse50MoveRule") {
         Options::setOption<bool>(value,globals::options.search.syzygy_50_move_rule);
     }
     else if (name == "SyzygyProbeDepth") {
         Options::setOption<int>(value,globals::options.search.syzygy_probe_depth);
     }
-    else if (name == "OwnBook") {
+    else
+#endif
+    if (name == "OwnBook") {
         Options::setOption<bool>(value,globals::options.book.book_enabled);
     } else if (name == "BookPath") {
         Options::setOption<std::string>(value,globals::options.book.book_path);
@@ -1670,6 +1704,20 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
     }
     std::string cmd_word, cmd_args;
     split_cmd(cmd, cmd_word, cmd_args);
+#ifdef ARASAN_EMBEDDED
+    if (isEmbeddedBlockedCommand(cmd_word)) {
+        std::cout << debugPrefix << "error: \"" << cmd_word << "\" is disabled in this build"
+                  << std::endl;
+        return true; // false would mean "quit"
+    }
+    if (!globals::nnueInitDone && (cmd_word == "go" || cmd_word == "bench")) {
+        // delayedInit failed to load the network: don't search without it
+        if (!globals::delayedInit()) {
+            std::cout << debugPrefix << "error: no NNUE network loaded" << std::endl;
+            return true;
+        }
+    }
+#endif
     if (cmd == "uci") {
         uci = true;
         globals::debugPrefix = UCI_DEBUG_PREFIX;
@@ -1747,6 +1795,12 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
                value = value.erase(value.find_last_not_of(' ') + 1);
             }
         }
+#ifdef ARASAN_EMBEDDED
+        if (isEmbeddedBlockedOption(name)) {
+            std::cout << debugPrefix << "error: option \"" << name << "\" is disabled in this build"
+                      << std::endl;
+        } else
+#endif
         if (uciOptionCompare(name,"Hash")) {
             if (!memorySet) {
                 size_t old = globals::options.search.hash_table_size;
@@ -1951,8 +2005,11 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
                 std::string move(*it);
                 Move m = Notation::value(board,board.sideToMove(),Notation::InputFormat::UCI,move);
                 if (!IsNull(m)) {
-                    // Arena can send invalid move sequences in some situations
-                    if (!validMove(board,m)) {
+                    // Arena can send invalid move sequences in some situations.
+                    // Use the full legality check: validMove() passes moves
+                    // that leave the king in check, after which the other side
+                    // could "capture" the king and corrupt the board.
+                    if (!legalMove(board,m)) {
                         std::cout << debugPrefix << "warning: invalid move received: " << move << ", ignoring" << std::endl;
                         break;
                     }
@@ -1976,6 +2033,14 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
                     }
                     ++lastAdded;
                     board.doMove(m);
+                    // Board compacts its repetition list, so long games are
+                    // safe, but a move list this long is almost certainly a
+                    // GUI or client error, so say so.
+                    static constexpr size_t LONG_GAME_PLIES = 1000;
+                    if (moveIndex + 1 == LONG_GAME_PLIES) {
+                        std::cout << debugPrefix << "warning: over " << LONG_GAME_PLIES
+                                  << " moves in position command" << std::endl;
+                    }
                 }
             }
         }
@@ -2387,10 +2452,10 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
         std::cout << "feature name=1 setboard=1 san=1 usermove=1 ping=1 ics=1 playother=0 sigint=0 colors=0 analyze=1 debug=1 memory=1 smp=1 variants=\"normal\"";
 #ifdef SYZYGY_TBS
         std::cout << " egt=\"syzygy\"";
-#endif
         std::cout << " option=\"SyzygyUse50MoveRule -check " << globals::options.search.syzygy_50_move_rule << "\"";
         std::cout << " option=\"SyzygyProbeDepth -spin " <<
             globals::options.search.syzygy_probe_depth << " 0 64" << "\"";
+#endif
         std::cout << " option=\"OwnBook -check " <<
             globals::options.book.book_enabled << "\"";
         std::cout << " option=\"BookPath -path " <<
