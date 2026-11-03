@@ -152,7 +152,10 @@ int BoardIO::readFEN(Board &board, const std::string &buf) {
             return 0;
         sqbuf[1] = *bp++;
         Square epsq = SquareValue(sqbuf);
-        if (epsq == InvalidSquare) {
+        // The e.p. square must be on the 6th rank from the side to move's
+        // perspective (rank 6 if White moves, rank 3 if Black moves).
+        // Otherwise ep_candidate below can fall off the board.
+        if (epsq == InvalidSquare || Rank(epsq, temp.sideToMove()) != 6) {
             return 0;
         }
         temp.state.enPassantSq = InvalidSquare;
