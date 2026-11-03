@@ -1976,6 +1976,14 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
                     }
                     ++lastAdded;
                     board.doMove(m);
+                    // Board compacts its repetition list, so long games are
+                    // safe, but a move list this long is almost certainly a
+                    // GUI or client error, so say so.
+                    static constexpr size_t LONG_GAME_PLIES = 1000;
+                    if (moveIndex + 1 == LONG_GAME_PLIES) {
+                        std::cout << debugPrefix << "warning: over " << LONG_GAME_PLIES
+                                  << " moves in position command" << std::endl;
+                    }
                 }
             }
         }

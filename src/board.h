@@ -517,6 +517,19 @@ private:
 
    static void setupInitialBoard();
 
+   // Make room in repList when it is full, by keeping only the most
+   // recent entries. Repetition checks never look back further than
+   // the 50-move window, so the dropped entries are never needed.
+   void compactRepList() noexcept;
+
+   // Append a hash code to repList, compacting it first if it is full.
+   void pushRep(hash_t h) noexcept {
+       if (repListHead >= repList + RepListSize) {
+           compactRepList();
+       }
+       *repListHead++ = h;
+   }
+
    void undoCastling(Square kp, Square oldkingsq,
            Square newrooksq, Square oldrooksq);
 
